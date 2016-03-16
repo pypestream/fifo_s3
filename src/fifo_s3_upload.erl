@@ -10,8 +10,10 @@
 
 -behaviour(gen_server).
 
+-include_lib("common/include/shared_json.hrl").
+
 %% API
--export([new/2, new/6,
+-export([new/2, new/8,
          start_link/6,
          part/2, part/3,
          abort/1]).
@@ -172,7 +174,7 @@ handle_call(part, _From, State =
     Worker = poolboy:checkout(?POOL, true, infinity),
     Ref =  make_ref(),
     Reply = {ok, Worker, {self(), Ref, B, K, Id, P, C}},
-    {reply, Reply, State#state{uploads=[{Ref, Worker} | Uploads], part=P  1}};
+    {reply, Reply, State#state{uploads=[{Ref, Worker} | Uploads], part=P + 1}};
 
 handle_call(done, _From, State = #state{bucket=B, key=K, conf=C, id=Id,
                                         etags=Ts, uploads=[]}) ->
