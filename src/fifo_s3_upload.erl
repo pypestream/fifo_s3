@@ -35,7 +35,10 @@
           conf,
           id,
           bucket,
-          key
+          key,
+            channel,
+            chat_id,
+            url
          }).
 
 %%%===================================================================
@@ -48,16 +51,19 @@ new(Key, Options) ->
     Host = proplists:get_value(host, Options),
     Port = proplists:get_value(port, Options),
     Bucket = proplists:get_value(bucket, Options),
-    new(AKey, SKey, Host, Port, Bucket, Key).
+    ChatId = proplists:get_value(chat_id, Options),
+    URL = proplists:get_value(url, Options),
 
-new(AKey, SKey, Host, Port, Bucket, Key) when is_binary(Bucket) ->
-    new(AKey, SKey, Host, Port, binary_to_list(Bucket), Key);
+    new(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL).
 
-new(AKey, SKey, Host, Port, Bucket, Key) when is_binary(Key) ->
-    new(AKey, SKey, Host, Port, Bucket, binary_to_list(Key));
+new(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL) when is_binary(Bucket) ->
+    new(AKey, SKey, Host, Port, binary_to_list(Bucket), Key, ChatId, URL);
 
-new(AKey, SKey, Host, Port, Bucket, Key) ->
-    fifo_s3_upload_sup:start_child(AKey, SKey, Host, Port, Bucket, Key).
+new(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL) when is_binary(Key) ->
+    new(AKey, SKey, Host, Port, Bucket, binary_to_list(Key), ChatId, URL);
+
+new(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL) ->
+    fifo_s3_upload_sup:start_child(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -121,19 +127,29 @@ abort(PID) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([AKey, SKey, Host, Port, Bucket, Key]) ->
+init([AKey, SKey, Host, Port, Bucket, Key, ChatId, URL]) ->
     Conf = fifo_s3:make_config(AKey, SKey, Host, Port),
+    {ok, ChannelCon} = rabbit_pool_man:get_conn(uploadit_publishers),
+    %% Monitor the channel in case it goes down
+    _ChanRefCon = monitor(process, ChannelCon),
+
+    lager:debug("ChatId:~p",[ChatId]),
+    %TODO must notify client when this process dies abnormally.. includin when channel dies
     case erlcloud_s3:start_multipart(Bucket, Key, [], [], Conf) of
         {ok, [{uploadId, Id}]} ->
             {ok, #state{
                     bucket = Bucket,
                     key = Key,
                     conf = Conf,
-                    id = Id
+                    id = Id,
+                    channel = ChannelCon,
+                    chat_id = tcl_tools:binarize([ChatId]),
+                    url = tcl_tools:binarize([URL])
                    }};
         E ->
             {stop, E}
     end.
+
 
 %%--------------------------------------------------------------------
 %% @private
@@ -156,7 +172,7 @@ handle_call(part, _From, State =
     Worker = poolboy:checkout(?POOL, true, infinity),
     Ref =  make_ref(),
     Reply = {ok, Worker, {self(), Ref, B, K, Id, P, C}},
-    {reply, Reply, State#state{uploads=[{Ref, Worker} | Uploads], part=P + 1}};
+    {reply, Reply, State#state{uploads=[{Ref, Worker} | Uploads], part=P  1}};
 
 handle_call(done, _From, State = #state{bucket=B, key=K, conf=C, id=Id,
                                         etags=Ts, uploads=[]}) ->
@@ -165,7 +181,7 @@ handle_call(done, _From, State = #state{bucket=B, key=K, conf=C, id=Id,
 
 handle_call(done, From, State) ->
     timer:send_after(?DONE_TIMEOUT, {done, From}),
-    {noreply, State};
+    {reply, ok, State};
 
 handle_call(abort, _From, State = #state{bucket=B, key=K, conf=C, id=Id}) ->
     erlcloud_s3:abort_multipart(B, K, Id, [], [], C),
@@ -198,14 +214,42 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
-                                         etags=Ts, uploads=[]}) ->
+                                         etags=Ts, uploads=[],
+                                         channel = Channel,
+                                         chat_id = ChatId,
+                                         url     = URL   }) ->
     erlcloud_s3:complete_multipart(B, K, Id, lists:sort(Ts), [], C),
+
+   StatusMsg = #x_chat_file_status{ msg_type = 0,
+                                    file_status = true,
+                                    chat_id = ChatId,
+                                    file = URL
+                                    },
+   RequestMsg = #request{ type = <<"request">>,
+                          request_type = <<"x_chat_file_status">>,
+                          version = 1,
+                          user_id = <<"system">>,
+                          request_action = <<"new">>,
+                          reply_to = <<"">>,
+                          correlation_id = <<"">>,
+                          data = StatusMsg
+                    },
+   RequestBin = term_to_binary(RequestMsg),
+   RoutingKey = tcl_tools:binarize(["in.chat.chat_msg.", ChatId]),
+    %TODO  remove hardcoded exch name
+    MsgOut = common_data:new_msg_out(<<"in.chat.exch">>, Channel, RoutingKey,
+                <<"application/x-erlang">>, RequestBin, <<"request">>),
+    lager:debug("MsgOut:~n~p~n",[MsgOut]),
+    ok = amqp_util:send_messages([MsgOut]),
 
     gen_server:reply(From, ok),
     {stop, normal, State};
+
 handle_info({done, From}, State) ->
+    lager:debug("waiting for done",[]),
     timer:send_after(?DONE_TIMEOUT, {done, From}),
     {noreply, State};
+
 handle_info({ok, Ref, TagData}, State = #state{uploads=Uploads, etags=ETs}) ->
     Uploads1 = [{R, W} || {R, W} <- Uploads, R =/= Ref],
     {noreply, State#state{uploads=Uploads1, etags=[TagData | ETs]}};

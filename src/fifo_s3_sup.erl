@@ -32,8 +32,27 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
+    {ok, Pid} = supervisor:start_link({local, ?SERVER}, ?MODULE, []),
+
+    %% setup rabbit connection pools
+    %% we want these to be the first processes started, so the connections
+    %% are available for all other processes
+    RabbitConfig = common_util:get_rabbit_config(),
+    lager:debug("Startin rabbit pools with sup config: ~p", [RabbitConfig]),
+    F = fun({PoolName, ConfigProp}) ->
+        %% Start a rabbit_pool_man process for each rabbit config entry
+        PoolSupId = common_util:make_child_spec_id(rabbit_pool_man, PoolName),
+        Pool = {PoolSupId,
+            {rabbit_pool_man, start_link, [[PoolName, ConfigProp]]},
+            permanent, 2000, worker, [rabbit_pool_man]},
+        {ok, _PoolPid} = supervisor:start_child(Pid, Pool),
+        rabbit_pool_man:initialise(PoolName)
+
+        end,
+    lists:foreach(F, RabbitConfig),
+
+    {ok, Pid}.
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
