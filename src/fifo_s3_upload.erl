@@ -14,7 +14,7 @@
 
 %% API
 -export([new/2, new/8,
-         start_link/6,
+         start_link/8,
          part/2, part/3,
          abort/1]).
 
@@ -75,8 +75,8 @@ new(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL) ->
 %% @end
 %%--------------------------------------------------------------------
 
-start_link(AKey, SKey, Host, Port, Bucket, Key) ->
-    gen_server:start_link(?MODULE, [AKey, SKey, Host, Port, Bucket, Key], []).
+start_link(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL) ->
+    gen_server:start_link(?MODULE, [AKey, SKey, Host, Port, Bucket, Key, ChatId, URL], []).
 
 part(PID, Part) ->
     part(PID, Part, infinity).
