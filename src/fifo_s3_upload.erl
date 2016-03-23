@@ -13,8 +13,8 @@
 -include_lib("common/include/shared_json.hrl").
 
 %% API
--export([new/2, new/8,
-         start_link/8,
+-export([new/2, new/10,
+         start_link/10,
          part/2, part/3,
          abort/1]).
 
@@ -38,9 +38,11 @@
           id,
           bucket,
           key,
-            channel,
-            chat_id,
-            url
+          channel,
+          user_id,
+          context,
+          context_id,
+          url
          }).
 
 %%%===================================================================
@@ -53,19 +55,22 @@ new(Key, Options) ->
     Host = proplists:get_value(host, Options),
     Port = proplists:get_value(port, Options),
     Bucket = proplists:get_value(bucket, Options),
-    ChatId = proplists:get_value(chat_id, Options),
+
+    UserId = proplists:get_value(user_id, Options),
+    Context = proplists:get_value(context, Options),
+    ContextId = proplists:get_value(context_id, Options),
     URL = proplists:get_value(url, Options),
 
-    new(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL).
+    new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, URL).
 
-new(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL) when is_binary(Bucket) ->
-    new(AKey, SKey, Host, Port, binary_to_list(Bucket), Key, ChatId, URL);
+new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, URL) when is_binary(Bucket) ->
+    new(AKey, SKey, Host, Port, binary_to_list(Bucket), Key, UserId, Context, ContextId, URL);
 
-new(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL) when is_binary(Key) ->
-    new(AKey, SKey, Host, Port, Bucket, binary_to_list(Key), ChatId, URL);
+new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, URL) when is_binary(Key) ->
+    new(AKey, SKey, Host, Port, Bucket, binary_to_list(Key), UserId, Context, ContextId, URL);
 
-new(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL) ->
-    fifo_s3_upload_sup:start_child(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL).
+new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, URL) ->
+    fifo_s3_upload_sup:start_child(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, URL).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -75,8 +80,8 @@ new(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL) ->
 %% @end
 %%--------------------------------------------------------------------
 
-start_link(AKey, SKey, Host, Port, Bucket, Key, ChatId, URL) ->
-    gen_server:start_link(?MODULE, [AKey, SKey, Host, Port, Bucket, Key, ChatId, URL], []).
+start_link(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, URL) ->
+    gen_server:start_link(?MODULE, [AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, URL], []).
 
 part(PID, Part) ->
     part(PID, Part, infinity).
@@ -129,13 +134,12 @@ abort(PID) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([AKey, SKey, Host, Port, Bucket, Key, ChatId, URL]) ->
+init([AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, URL]) ->
     Conf = fifo_s3:make_config(AKey, SKey, Host, Port),
     {ok, ChannelCon} = rabbit_pool_man:get_conn(uploadit_publishers),
     %% Monitor the channel in case it goes down
     _ChanRefCon = monitor(process, ChannelCon),
 
-    lager:debug("ChatId:~p",[ChatId]),
     %TODO must notify client when this process dies abnormally.. includin when channel dies
     case erlcloud_s3:start_multipart(Bucket, Key, [], [], Conf) of
         {ok, [{uploadId, Id}]} ->
@@ -145,7 +149,9 @@ init([AKey, SKey, Host, Port, Bucket, Key, ChatId, URL]) ->
                     conf = Conf,
                     id = Id,
                     channel = ChannelCon,
-                    chat_id = tcl_tools:binarize([ChatId]),
+                    user_id = UserId,
+                    context = Context,
+                    context_id = tcl_tools:binarize([ContextId]),
                     url = tcl_tools:binarize([URL])
                    }};
         E ->
@@ -218,30 +224,35 @@ handle_cast(_Msg, State) ->
 handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
                                          etags=Ts, uploads=[],
                                          channel = Channel,
-                                         chat_id = ChatId,
+                                         user_id = UserId,
+                                         context = Context,
+                                         context_id = ContextId,
                                          url     = URL   }) ->
     erlcloud_s3:complete_multipart(B, K, Id, lists:sort(Ts), [], C),
 
    StatusMsg = #x_chat_file_status{ msg_type = 0,
                                     file_status = true,
-                                    chat_id = ChatId,
+                                    chat_id = ContextId,
                                     file = URL
                                     },
    RequestMsg = #request{ type = <<"request">>,
                           request_type = <<"x_chat_file_status">>,
                           version = 1,
-                          user_id = <<"system">>,
+                          user_id = tcl_tools:ensure(binary, UserId),
                           request_action = <<"new">>,
                           reply_to = <<"">>,
                           correlation_id = <<"">>,
                           data = StatusMsg
                     },
+
    RequestBin = term_to_binary(RequestMsg),
-   RoutingKey = tcl_tools:binarize(["in.chat.chat_msg.", ChatId]),
+   {Exch, RoutingKey} = p_get_routing(Context, ContextId),
+
     %TODO  remove hardcoded exch name
-    MsgOut = common_data:new_msg_out(<<"in.chat.exch">>, Channel, RoutingKey,
+    MsgOut = common_data:new_msg_out(Exch, Channel, RoutingKey,
                 <<"application/x-erlang">>, RequestBin, <<"request">>),
     lager:debug("MsgOut:~n~p~n",[MsgOut]),
+    % TODO set reply_to
     ok = amqp_util:send_messages([MsgOut]),
 
     gen_server:reply(From, ok),
@@ -293,3 +304,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+p_get_routing("message", ContextId) ->
+    {<<"in.chat.exch">>, tcl_tools:binarize(["in.chat.chat_msg.", ContextId])};
+
+p_get_routing("campaign", _ContextId) ->
+    {<<"in.tasks.exch">>, <<"in.tasks.general">>}.
