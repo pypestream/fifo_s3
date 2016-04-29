@@ -230,8 +230,7 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
                                          url     = URL   }) ->
     erlcloud_s3:complete_multipart(B, K, Id, lists:sort(Ts), [], C),
 
-   StatusMsg = #x_chat_file_status{ msg_type = 0,
-                                    file_status = <<"ready">>,
+   StatusMsg = #x_chat_file_status{ file_status = <<"ready">>,
                                     chat_id = ContextId,
                                     file = URL
                                     },
