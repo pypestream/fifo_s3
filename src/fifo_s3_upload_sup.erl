@@ -11,7 +11,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_child/11, start_link/0]).
+-export([start_child/12, start_link/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -22,8 +22,8 @@
 %%% API functions
 %%%===================================================================
 
-start_child(AKey, SKey, Host, Port, Bucket, Key,  UserId, Context, ContextId, Size, URL) ->
-    supervisor:start_child(?SERVER, [AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, Size, URL]).
+start_child(AKey, SKey, Host, Port, Bucket, Key,  UserId, Context, ContextId, ClientMsgId, Size, URL) ->
+    supervisor:start_child(?SERVER, [AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, ClientMsgId, Size, URL]).
 
 %%--------------------------------------------------------------------
 %% @doc

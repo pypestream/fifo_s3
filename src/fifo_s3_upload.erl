@@ -13,8 +13,8 @@
 -include_lib("common/include/shared_json.hrl").
 
 %% API
--export([new/2, new/11,
-         start_link/11,
+-export([new/2, new/12,
+         start_link/12,
          part/2, part/3,
          abort/1]).
 
@@ -42,6 +42,7 @@
           user_id,
           context,
           context_id,
+          client_msg_id,
           size,
           url
          }).
@@ -60,19 +61,20 @@ new(Key, Options) ->
     UserId = proplists:get_value(user_id, Options),
     Context = proplists:get_value(context, Options),
     ContextId = proplists:get_value(context_id, Options),
+    ClientMsgId = proplists:get_value(client_msg_id, Options),
     Size = proplists:get_value(size, Options),
     URL = proplists:get_value(url, Options),
 
-    new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, Size, URL).
+    new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, ClientMsgId, Size, URL).
 
-new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, Size, URL) when is_binary(Bucket) ->
-    new(AKey, SKey, Host, Port, binary_to_list(Bucket), Key, UserId, Context, ContextId, Size, URL);
+new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId,ClientMsgId, Size, URL) when is_binary(Bucket) ->
+    new(AKey, SKey, Host, Port, binary_to_list(Bucket), Key, UserId, Context, ContextId, ClientMsgId, Size, URL);
 
-new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, Size, URL) when is_binary(Key) ->
-    new(AKey, SKey, Host, Port, Bucket, binary_to_list(Key), UserId, Context, ContextId, Size, URL);
+new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, ClientMsgId, Size, URL) when is_binary(Key) ->
+    new(AKey, SKey, Host, Port, Bucket, binary_to_list(Key), UserId, Context, ContextId, ClientMsgId, Size, URL);
 
-new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, Size, URL) ->
-    fifo_s3_upload_sup:start_child(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, Size, URL).
+new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, ClientMsgId, Size, URL) ->
+    fifo_s3_upload_sup:start_child(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, ClientMsgId, Size, URL).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -82,8 +84,8 @@ new(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, Size, URL) 
 %% @end
 %%--------------------------------------------------------------------
 
-start_link(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, Size, URL) ->
-    gen_server:start_link(?MODULE, [AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId,Size, URL], []).
+start_link(AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, ClientMsgId, Size, URL) ->
+    gen_server:start_link(?MODULE, [AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, ClientMsgId, Size, URL], []).
 
 part(PID, Part) ->
     part(PID, Part, infinity).
@@ -136,7 +138,7 @@ abort(PID) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, Size, URL]) ->
+init([AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, ClientMsgId, Size, URL]) ->
     Conf = fifo_s3:make_config(AKey, SKey, Host, Port),
     {ok, ChannelCon} = rabbit_pool_man:get_conn(uploadit_publishers),
     %% Monitor the channel in case it goes down
@@ -153,6 +155,7 @@ init([AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, Size, URL
                     channel = ChannelCon,
                     user_id = UserId,
                     context = Context,
+                    client_msg_id = ClientMsgId,
                     context_id = tcl_tools:binarize([ContextId]),
                     size = Size,
                     url = tcl_tools:binarize([URL])
@@ -230,6 +233,7 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
                                          user_id = UserId,
                                          context = Context,
                                          context_id = ContextId,
+                                         client_msg_id = ClientMsgId,
                                          size = Size,
                                          url     = URL   }) ->
     erlcloud_s3:complete_multipart(B, K, Id, lists:sort(Ts), [], C),
@@ -237,6 +241,7 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
    StatusMsg = #x_chat_file_status{ file_status = <<"ready">>,
                                     chat_id = ContextId,
                                     file = URL,
+                                    client_msg_id = ClientMsgId,
                                     size = tcl_tools:ensure(integer, Size)
                                     },
    RequestMsg = #request{ type = <<"request">>,
