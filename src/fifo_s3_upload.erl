@@ -143,7 +143,7 @@ init([AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, ClientMsg
     {ok, ChannelCon} = rabbit_pool_man:get_conn(uploadit_publishers),
     %% Monitor the channel in case it goes down
     _ChanRefCon = monitor(process, ChannelCon),
-
+   lager:debug("ClientMsgId:~p",[ClientMsgId]),
     %TODO must notify client when this process dies abnormally.. includin when channel dies
     case erlcloud_s3:start_multipart(Bucket, Key, [], [], Conf) of
         {ok, [{uploadId, Id}]} ->
@@ -253,14 +253,14 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
                           correlation_id = <<"">>,
                           data = StatusMsg
                     },
-
+    lager:debug("StatusMsg:~p",[StatusMsg]),
    RequestBin = term_to_binary(RequestMsg),
    {Exch, RoutingKey} = p_get_routing(Context, ContextId),
 
     %TODO  remove hardcoded exch name
     MsgOut = common_data:new_msg_out(Exch, Channel, RoutingKey,
                 <<"application/x-erlang">>, RequestBin, <<"request">>),
-    lager:debug("MsgOut:~n~p~n",[MsgOut]),
+    lager:debug("MsgOut:~p~n",[MsgOut]),
     % TODO set reply_to
     ok = amqp_util:send_messages([MsgOut]),
 
