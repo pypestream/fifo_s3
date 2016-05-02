@@ -155,7 +155,7 @@ init([AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, ClientMsg
                     channel = ChannelCon,
                     user_id = UserId,
                     context = Context,
-                    client_msg_id = ClientMsgId,
+                    client_msg_id = tcl_tools:binarize([ClientMsgId]),
                     context_id = tcl_tools:binarize([ContextId]),
                     size = Size,
                     url = tcl_tools:binarize([URL])
@@ -241,7 +241,7 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
    StatusMsg = #x_chat_file_status{ file_status = <<"ready">>,
                                     chat_id = ContextId,
                                     file = URL,
-                                    client_msg_id = ClientMsgId,
+                                    client_msg_id =  tcl_tools:ensure(binary, ClientMsgId),
                                     size = tcl_tools:ensure(integer, Size)
                                     },
    RequestMsg = #request{ type = <<"request">>,
