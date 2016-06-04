@@ -245,7 +245,7 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
                                     size = tcl_tools:ensure(integer, Size)
                                     },
    RequestMsg = #request{ type = <<"request">>,
-                          request_type = <<"x_chat_file_status">>,
+                          request_type = p_get_request_type(Context),
                           version = 1,
                           user_id = tcl_tools:ensure(binary, UserId),
                           request_action = <<"new">>,
@@ -318,3 +318,6 @@ p_get_routing("message", ContextId) ->
 
 p_get_routing("campaign", _ContextId) ->
     {<<"in.tasks.exch">>, <<"in.tasks.general">>}.
+
+p_get_request_type("message") -> <<"x_chat_file_status">>;
+p_get_request_type("campaign") -> <<"x_campaign_file_status">>.
