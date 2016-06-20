@@ -42,7 +42,7 @@ start_link() ->
     lager:debug("Startin rabbit pools with sup config: ~p", [RabbitConfig]),
     F = fun({PoolName, ConfigProp}) ->
         %% Start a rabbit_pool_man process for each rabbit config entry
-        PoolSupId = common_util:make_child_spec_id(rabbit_pool_man, PoolName),
+        PoolSupId = py_tools:make_child_spec_id(rabbit_pool_man, PoolName),
         Pool = {PoolSupId,
             {rabbit_pool_man, start_link, [[PoolName, ConfigProp]]},
             permanent, 2000, worker, [rabbit_pool_man]},
