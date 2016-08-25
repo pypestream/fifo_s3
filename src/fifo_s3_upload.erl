@@ -145,10 +145,7 @@ init([AKey, SKey, Host, Port, Bucket, Key, UserId, Context, ContextId, ClientMsg
     _ChanRefCon = monitor(process, ChannelCon),
    lager:debug("ClientMsgId:~p",[ClientMsgId]),
 
-    %RequestHeaders = [{"x-amz-acl", encode_acl(proplists:get_value(acl, Options))}|HTTPHeaders]
-    %    ++ [{"x-amz-meta-" ++ string:to_lower(MKey), MValue} ||
-    %        {MKey, MValue} <- proplsts:get_value(meta, Options, [])],
-    Headers = [{"Content-Disposition", "attachment;"}, {"Content-Type", "application/octet-stream"}],
+    Headers = [{"content-type", "application/octet-stream"}],
 
     %TODO must notify client when this process dies abnormally.. includin when channel dies
     case erlcloud_s3:start_multipart(Bucket, Key, [], Headers, Conf) of
