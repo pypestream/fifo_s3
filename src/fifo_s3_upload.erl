@@ -254,12 +254,13 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
                           data = StatusMsg
                     },
     lager:debug("StatusMsg:~p",[StatusMsg]),
-   RequestBin = term_to_binary(RequestMsg),
-   {Exch, RoutingKey} = p_get_routing(Context, ContextId),
+    {Exch, RoutingKey} = p_get_routing(Context, ContextId),
 
     %TODO  remove hardcoded exch name
-    MsgOut = common_data:new_msg_out(Exch, Channel, RoutingKey,
-                <<"application/x-erlang">>, RequestBin, <<"request">>),
+    Msg = common_data:new_internal_msg(request, Request, RequestMsg#request.version),
+    MsgOut = common_data:new_msg_out(Exch, Channel, RoutingKey, <<"application/x-erlang">>,
+				     term_to_binary(Msg), <<"request">>),
+
     lager:debug("MsgOut:~p~n",[MsgOut]),
     % TODO set reply_to
     ok = amqp_util:send_messages([MsgOut]),
