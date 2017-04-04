@@ -257,7 +257,7 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
     {Exch, RoutingKey} = p_get_routing(Context, ContextId),
 
     %TODO  remove hardcoded exch name
-    Msg = common_data:new_internal_msg(request, Request, RequestMsg#request.version),
+    Msg = common_data:new_internal_msg(request, RequestMsg, RequestMsg#request.version),
     MsgOut = common_data:new_msg_out(Exch, Channel, RoutingKey, <<"application/x-erlang">>,
 				     term_to_binary(Msg), <<"request">>),
 
