@@ -314,7 +314,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 p_get_routing("message", ContextId) ->
-    {<<"in.chat.exch">>, tcl_tools:binarize(["in.chat.chat_msg.", ContextId])};
+    {<<"in.chat.exch">>, tcl_tools:binarize(["in.chat.direct.", ContextId])};
 
 p_get_routing("campaign", _ContextId) ->
     {<<"in.tasks.exch">>, <<"in.tasks.general">>}.
