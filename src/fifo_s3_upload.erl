@@ -318,7 +318,7 @@ p_get_routing("message", ContextId) ->
     {<<"in.chat.exch">>, tcl_tools:binarize(["in.chat.direct.", ContextId])};
 
 p_get_routing("campaign", _ContextId) ->
-    {<<"in.tasks.exch">>, <<"in.tasks.general">>}.
+    {<<"in.tasks.exch">>, <<"in.tasks.internal">>}.
 
 p_get_request_type("message") -> <<"x_chat_file_status">>;
 p_get_request_type("campaign") -> <<"x_campaign_file_status">>.
