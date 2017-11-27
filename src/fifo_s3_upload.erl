@@ -235,7 +235,7 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
                                          context_id = ContextId,
                                          client_msg_id = ClientMsgId,
                                          size = Size,
-                                         url     = URL   }) ->
+                                         url     = URL   }) when Context == "message" ->
     erlcloud_s3:complete_multipart(B, K, Id, lists:sort(Ts), [], C),
 
    StatusMsg = #x_chat_file_status{ file_status = <<"ready">>,
@@ -269,8 +269,14 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
     {stop, normal, State};
 
 % dont send updates for any uploads other than chat msgs
-handle_info({done, From}, State = #state{  context = Context }) when Context =/= "message"->
+handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
+    etags=Ts, uploads=[],
+    context = Context
+    }) when Context =/= "message" ->
+
+    erlcloud_s3:complete_multipart(B, K, Id, lists:sort(Ts), [], C),
     gen_server:reply(From, ok),
+
     {stop, normal, State};
 
 handle_info({done, From}, State) ->
