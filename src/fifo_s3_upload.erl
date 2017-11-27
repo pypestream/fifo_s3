@@ -268,6 +268,11 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
     gen_server:reply(From, ok),
     {stop, normal, State};
 
+% dont send updates for any uploads other than chat msgs
+handle_info({done, From}, State = #state{  context = Context }) when Context =/= "message"->
+    gen_server:reply(From, ok),
+    {stop, normal, State};
+
 handle_info({done, From}, State) ->
     lager:debug("waiting for done",[]),
     timer:send_after(?DONE_TIMEOUT, {done, From}),
