@@ -263,7 +263,7 @@ handle_info({done, From}, State = #state{bucket=B, key=K, conf=C, id=Id,
 
     lager:debug("MsgOut:~p~n",[MsgOut]),
     % TODO set reply_to
-    ok = amqp_util:send_messages([MsgOut]),
+    ok = cmn_amqp_util:send_messages([MsgOut]),
 
     gen_server:reply(From, ok),
     {stop, normal, State};
