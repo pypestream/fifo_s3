@@ -11,6 +11,7 @@
 -behaviour(gen_server).
 
 -include_lib("common/include/shared_json.hrl").
+-include_lib("amqp_client/include/amqp_client.hrl").
 
 %% API
 -export([new/2, new/12,
@@ -304,11 +305,12 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(normal, _State) ->
-
+terminate(normal, #state{channel = Channel} = _State) ->
+    case Channel of undefined -> ok ; _ -> catch amqp_channel:close(Channel) end,
     ok;
 
-terminate(_Reason, #state{bucket=B, key=K, conf=C, id=Id}) ->
+terminate(_Reason, #state{bucket=B, key=K, conf=C, id=Id, channel=Channel}) ->
+    case Channel of undefined -> ok ; _ -> catch amqp_channel:close(Channel) end,
     erlcloud_s3:abort_multipart(B, K, Id, [], [], C).
 
 %%--------------------------------------------------------------------
